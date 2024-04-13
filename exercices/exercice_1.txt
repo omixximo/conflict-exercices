@@ -1,0 +1,34 @@
+# Create main branch
+create branch main from master
+checkout main
+setup
+commit main-1
+# Create dev branch
+create branch dev from master
+
+# Start sprint 1
+# Feature 1
+create branch feature/1 from main
+checkout feature/1
+order feature/1  1.2.1.0 1.3.1.0
+commit feature/1 1
+merge feature/1 into dev
+# Feature 2
+create branch feature/2 from main
+checkout feature/2
+order feature/2 2.2.3.0 3.1.5.0
+commit feature/2 1
+merge feature/2 into dev
+# Feature 3 not to master
+create branch feature/3 from main
+checkout feature/3
+order feature/3 3.1.1.0 3.1.3.3
+commit feature/3 1
+merge feature/3 into dev
+# Create and publish release
+create branch release/1 from main
+merge feature/1 into release/1
+merge feature/2 into release/1
+merge feature/3 into release/1
+merge release/1 into main
+# End sprint 1

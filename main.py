@@ -1,7 +1,9 @@
 import argparse
+import git
+import re
 
 from os import makedirs, getcwd
-from os.path import isdir, join
+from os.path import isdir, isfile, join
 
 from typing import Tuple, Collection
 
@@ -22,6 +24,8 @@ DEFAULT_FEATURE = '0'
 
 cwd = getcwd()
 main_folder_path = join(cwd, MAIN_FOLDER_NAME)
+
+repo = git.Git('.')
 
 def format_line_start(folder_number,  file_number, line_number, subline_number=0) -> str:
     if subline_number != 0:
@@ -74,11 +78,7 @@ class Change():
             final_lines.append(line)
 
         with open(file_path, mode = 'w') as f:
-            print('\n'.join(final_lines))
             f.write('\n'.join(final_lines))
-
-        with open(file_path, mode='r') as f:
-            print(f.read())
 
     def __str__(self) -> str:
         return f'{self.folder}.{self.file}.{self.line}.{self.subline}'
@@ -98,6 +98,48 @@ class Order():
     def apply_changes(self) -> None:
         for change in self.changes:
             change.apply()
+
+
+# INSTRUCTIONS
+def create(*args):
+    args = ' '.join(args)
+    pattern = r'branch ([a-zA-Z0-9_/.]+) from ([a-zA-Z0-9_/.]+)'
+    match = re.search(pattern, args)
+    if not match:
+        raise Exception('Invalid instruction')
+    
+    new_branch = match.group(1)
+    head_branch = match.group(2)
+
+    print(head_branch)
+    print(new_branch)
+    
+    
+    repo.execute(f'git branch {new_branch} {head_branch}')
+
+def checkout(*args):
+    if len(args) != 1:
+        raise Exception('Invalid instruction')
+
+    repo.execute(f'git checkout {args[0]}')
+
+def commit(*args):
+    repo.execute(f'git add .')
+    repo.execute(['git', 'commit', '-m', ' '.join(args)])
+
+def merge(*args):
+    
+    args = ' '.join(args)
+    pattern = r'([a-zA-Z0-9_/.]+) into ([a-zA-Z0-9_/.]+)'
+    match = re.search(pattern, args)
+    if not match:
+        raise Exception('Invalid instruction')
+    
+    head = match.group(1)
+    base = match.group(2)
+    
+    checkout(base)
+    repo.execute(f'git merge {head} --no-ff')
 
 def create_folder(path :str) -> None:
     if not isdir(path):
@@ -123,23 +165,73 @@ def setup(*args) -> None:
                 for line_number in range(1, N_LINES+1):
                     f.write(format_line(folder_number, file_number, line_number) + '\n')
 
+def order(*args):
+    Order(' '.join(args)).apply_changes()
+
+# END INSTRUCTIONS
+class Instruction():
+    
+    parser = argparse.ArgumentParser()
+
+    functions = {
+        'create' : create,
+        'checkout' : checkout,
+        'commit' : commit,
+        'merge' : merge,
+        'setup' : setup,
+        'order' : order,
+    }
+    parser.add_argument('action', choices=functions.keys())
+    parser.add_argument('arguments', nargs='*')
+
+    def __init__(self, line):
+        self.args = self.parser.parse_args(line.split())
+
+    def execute(self):
+        self.functions[self.args.action](*self.args.arguments)
+
+def update(args):
+    for _order in args.orders:
+        Order(_order).apply_changes()
+
+def execute_file(args):
+
+    if isfile(args.file):
+        with open(args.file, mode = 'r') as f:
+            for line in f.read().split('\n'):
+                if line.startswith('#'):
+                    print(f'Comment: {line[1:].strip()}')
+                elif len(line) > 0:
+                    ins = Instruction(line)
+                    ins.execute()
+
+    else:
+        raise FileNotFoundError
+    
+def clean(args):
+
+    repo.execute('git checkout master')
+    repo.execute('git branch -D main')
+    repo.execute(['rmdir', f'./{MAIN_FOLDER_NAME}'])
+
 def main() -> None:
     # create the top-level parser
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(required=True, description='Action', help='Choose action to execute.')
 
-    def update(args):
-        for order in args.orders:
-            Order(order).apply_changes()
-
-    # create the parser for the "setup" command
     parser_setup = subparsers.add_parser('setup', description='Setups folders and files to start position')
     parser_setup.set_defaults(func=setup)
 
-    # create the parser for the "bar" command
-    parser_bar = subparsers.add_parser('update')
-    parser_bar.add_argument('orders', nargs='+')
-    parser_bar.set_defaults(func=update)
+    parser_update = subparsers.add_parser('update')
+    parser_update.add_argument('orders', nargs='+')
+    parser_update.set_defaults(func=update)
+
+    parser_execute = subparsers.add_parser('execute')
+    parser_execute.add_argument('file')
+    parser_execute.set_defaults(func=execute_file)
+
+    parser_clean = subparsers.add_parser('clean')
+    parser_clean.set_defaults(func=clean)
 
     args = parser.parse_args()
     args.func(args)
